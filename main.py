@@ -1,6 +1,5 @@
 # ETL script for border crossing time snapshots.
 
-import os
 import time
 import logging
 from datetime import datetime
@@ -82,20 +81,7 @@ def main() -> None:
     # Clean up DataFrame of missing data.
     df = df.replace(['N/A', None, '', ' '], np.NaN)
 
-    credentials = service_account.Credentials.from_service_account_file('border-364917-41f2e57ca67e.json')
-    #     {
-    #     'type': 'service_account',
-    #     'client_id': os.getenv('GOOGLE_CLIENT_ID'),
-    #     'client_email': os.getenv('GOOGLE_CLIENT_EMAIL'),
-    #     'private_key_id': os.getenv('GOOGLE_PRIVATE_KEY_ID'),
-    #     'private_key': os.getenv('GOOGLE_PRIVATE_KEY'),
-    #     'token_uri': os.getenv('GOOGLE_TOKEN_URI')
-    # })
-
-    client = storage.Client(credentials=credentials,
-                            project=os.getenv('GOOGLE_PROJECT_ID'))
-
-    bucket = client.bucket('ports_bucket')
+    bucket = storage.Client().bucket('ports_bucket')
 
     today = datetime.today()
 
