@@ -8,7 +8,6 @@ import pandas as pd
 import numpy as np
 
 from google.cloud import storage
-from google.oauth2 import service_account
 import xmltodict
 import requests
 
