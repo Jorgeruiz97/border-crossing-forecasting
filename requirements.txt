@@ -1,0 +1,8 @@
+requests
+xmltodict
+pandas
+numpy
+google-auth
+google-cloud-storage
+pyarrow
+fastparquet
