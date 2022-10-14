@@ -13,35 +13,34 @@ import requests
 
 logging.basicConfig(level=logging.INFO)
 
+crossings = (
+    # Commercial
+    ('commercial', 'standard_lanes'),
+    ('commercial', 'FAST_lanes'),
+    # Passenger
+    ('passenger', 'standard_lanes'),
+    ('passenger', 'ready_lanes'),
+    ('passenger', 'NEXUS_SENTRI_lanes'),
+    # Pedestrian
+    ('pedestrian', 'standard_lanes'),
+    ('pedestrian', 'ready_lanes')
+)
 
 def main() -> None:
     # Query raw XML file from the CBP website.
     response = requests.get('https://bwt.cbp.gov/xml/bwt.xml')
 
+    # Open connection to Google cloud storage.
+    bucket = storage.Client().bucket('border-wait-times')
+
     # Parse XML file response text to a python dict.
     raw = xmltodict.parse(response.content)['border_wait_time']
 
-    # Freeze the extraction time to use as reference.
-    extraction_timestamp = int(time.mktime(datetime.now().timetuple()))
+    # Freeze the extraction time in UNIX MICROS to use as reference.
+    extraction_timestamp = int(time.mktime(datetime.now().timetuple())) * _ONE_MILLION
 
     # Parse the document last update timestamp.
-    last_update_timestamp = f"{raw['last_updated_date']} {raw['last_updated_time']}"
-    last_update_timestamp = datetime.strptime(
-        last_update_timestamp, '%Y-%m-%d %H:%M:%S')
-    last_update_timestamp = time.mktime(last_update_timestamp.timetuple())
-
-    crossings = (
-        # Commercial
-        ('commercial', 'standard_lanes'),
-        ('commercial', 'FAST_lanes'),
-        # Passenger
-        ('passenger', 'standard_lanes'),
-        ('passenger', 'ready_lanes'),
-        ('passenger', 'NEXUS_SENTRI_lanes'),
-        # Pedestrian
-        ('pedestrian', 'standard_lanes'),
-        ('pedestrian', 'ready_lanes')
-    )
+    last_update_xml = f"{raw['last_updated_date']} {raw['last_updated_time']}"
 
     main = []
 
@@ -52,12 +51,12 @@ def main() -> None:
                 # Source data `automation_type` column has a typo therefore we need to maintain it.
                 automation = port['pedestrain_automation_type']
             else:
-                lane = port[f'{lane_type}_vehicle_lanes']
-                automation = port[f'{lane_type}_automation_type']
+              lane = port[f'{lane_type}_vehicle_lanes']
+              automation = port[f'{lane_type}_automation_type']
 
             main.append({
                 'extraction_timestamp': extraction_timestamp,
-                'last_update_timestamp': last_update_timestamp,
+                'last_update_xml': last_update_xml,
                 'port_number': port['port_number'],
                 'border': port['border'],
                 'port_name': port['port_name'],
@@ -74,21 +73,14 @@ def main() -> None:
                 'lanes_open': lane[lane_name]['lanes_open']
             })
 
-    # Build DataFrame from list of records.
-    df = pd.DataFrame.from_records(main)
+    # Build DataFrame from list of records & clean up missing data.
+    df = pd.DataFrame.from_records(main).replace(['N/A', None, '', ' '], np.NaN)
 
-    # Clean up DataFrame of missing data.
-    df = df.replace(['N/A', None, '', ' '], np.NaN)
+    # # Save raw snapshot of ports lanes as a parquet file to a Google Cloud Storage.
+    # bucket.blob(f'snapshots/cbp/raw/dt={extraction_timestamp}').upload_from_string(json.dumps(raw))
 
-    bucket = storage.Client().bucket('ports_bucket')
-
-    today = datetime.today()
-
-    blob = bucket.blob(
-        f'ports/{today.year}/{today.month}/{today.day}/{int(extraction_timestamp)}')
-
-    # Save snapshot of ports lanes as a parquet file to a Google Cloud Storage.
-    blob.upload_from_string(df.to_parquet(compression='gzip'))
+    # Save snapshot of ports lanes as a parquet file to Google Cloud Storage.
+    bucket.blob(f'snapshots/cbp/transformed/dt={extraction_timestamp}').upload_from_string(df.to_parquet(compression='gzip'))
 
 
 if __name__ == '__main__':
